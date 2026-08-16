@@ -1312,11 +1312,12 @@ function exportFullAnalysis(examId) {
 function renderSeats() {
   const cls = getCurrentClass();
   const seat = cls.seats;
-  const cfg = seat.config || { groups:4, colsPerGroup:2, rows:5 };
+  if (!seat.config) seat.config = { groups: 4, colsPerGroup: 2, rows: 5, podiumTop: true, showNo: false };
+  const cfg = seat.config;
   document.getElementById('workspace').innerHTML = `
     <div class="card">
       <div class="card-title">座位管理
-        <div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
           <select id="seatMode" onchange="changeSeatMode(this.value)" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border)">
             <option value="group" ${seat.mode==='group'?'selected':''}>大组</option>
             <option value="small" ${seat.mode==='small'?'selected':''}>小组</option>
@@ -1329,9 +1330,18 @@ function renderSeats() {
         </div>
       </div>
       <div class="toolbar">
-        <label style="font-size:13px">大组 <input type="number" id="cfgGroups" value="${cfg.groups||4}" style="width:48px;padding:4px;border-radius:6px;border:1px solid var(--border)"></label>
-        <label style="font-size:13px">每组列 <input type="number" id="cfgCols" value="${cfg.colsPerGroup||2}" style="width:48px;padding:4px;border-radius:6px;border:1px solid var(--border)"></label>
-        <label style="font-size:13px">排数 <input type="number" id="cfgRows" value="${cfg.rows||5}" style="width:48px;padding:4px;border-radius:6px;border:1px solid var(--border)"></label>
+        <label style="font-size:13px">大组 <input type="number" id="cfgGroups" value="${cfg.groups||4}" min="1" max="8" style="width:48px;padding:4px;border-radius:6px;border:1px solid var(--border)"></label>
+        <label style="font-size:13px">每组列 <input type="number" id="cfgCols" value="${cfg.colsPerGroup||2}" min="1" max="6" style="width:48px;padding:4px;border-radius:6px;border:1px solid var(--border)"></label>
+        <label style="font-size:13px">排数 <input type="number" id="cfgRows" value="${cfg.rows||5}" min="1" max="12" style="width:48px;padding:4px;border-radius:6px;border:1px solid var(--border)"></label>
+        <label style="font-size:13px">
+          <select id="cfgPodium" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border)">
+            <option value="top" ${cfg.podiumTop!==false?'selected':''}>讲台在上</option>
+            <option value="bottom" ${cfg.podiumTop===false?'selected':''}>讲台在下</option>
+          </select>
+        </label>
+        <label style="font-size:13px;display:flex;align-items:center;gap:4px">
+          <input type="checkbox" id="cfgShowNo" ${cfg.showNo?'checked':''}> 显示学号
+        </label>
         <button class="btn btn-sm" onclick="applySeatConfig()">应用</button>
       </div>
       <div id="seatArea">${renderSeatGrid()}</div>
@@ -1348,22 +1358,35 @@ function renderSeats() {
 function renderSeatGrid() {
   const cls = getCurrentClass();
   const seat = cls.seats;
-  const cfg = seat.config || { groups:4, colsPerGroup:2, rows:5 };
+  const cfg = seat.config || { groups:4, colsPerGroup:2, rows:5, podiumTop:true, showNo:false };
   const current = seat.current || {};
+  const showNo = !!cfg.showNo;
+  const podiumTop = cfg.podiumTop !== false;
+
+  const podiumHtml = `<div style="text-align:center;margin:10px auto;padding:8px 24px;border:1px solid var(--border);border-radius:8px;background:#f5f5f7;font-weight:600;font-size:13px;max-width:280px">讲　台</div>`;
+
   let html = '';
+  if (podiumTop) html += podiumHtml;
+
   if (seat.mode === 'group') {
-    html += `<div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">`;
+    // 两端分散 + 居中：space-evenly 让各组均匀铺满，页面更满、更均衡
+    html += `<div style="display:flex;justify-content:space-evenly;align-items:flex-start;flex-wrap:nowrap;gap:8px;width:100%;overflow-x:auto;padding:4px 0">`;
     for (let g = 0; g < cfg.groups; g++) {
-      html += `<div><div style="text-align:center;margin-bottom:6px;font-weight:600;font-size:13px">第${g+1}组</div>
-        <div class="seat-grid" style="grid-template-columns:repeat(${cfg.colsPerGroup},68px)">`;
+      html += `<div style="flex:0 0 auto">
+        <div style="text-align:center;margin-bottom:6px;font-weight:600;font-size:12px;color:var(--text-secondary)">第${g+1}组</div>
+        <div class="seat-grid" style="grid-template-columns:repeat(${cfg.colsPerGroup},64px);gap:5px">`;
       for (let r = 0; r < cfg.rows; r++) {
         for (let c = 0; c < cfg.colsPerGroup; c++) {
           const key = `g${g}-r${r}-c${c}`;
           const sid = current[key];
           const stu = sid ? cls.students.find(s => s.id === sid) : null;
+          const label = stu
+            ? (showNo && stu.classNo ? `${stu.name}<br><small style="color:#86868b">${stu.classNo}</small>` : stu.name)
+            : '空';
           html += `<div class="seat-cell ${stu?'':'empty'}" draggable="${!!stu}"
             ondragstart="dragStart(event,'${sid||''}','${key}')"
-            ondragover="event.preventDefault()" ondrop="dropSeat(event,'${key}')">${stu ? stu.name : '空'}</div>`;
+            ondragover="event.preventDefault()" ondrop="dropSeat(event,'${key}')"
+            style="line-height:1.25">${label}</div>`;
         }
       }
       html += `</div></div>`;
@@ -1375,12 +1398,18 @@ function renderSeatGrid() {
       const key = 's' + i;
       const sid = current[key];
       const stu = sid ? cls.students.find(s => s.id === sid) : null;
+      const label = stu
+        ? (showNo && stu.classNo ? `${stu.name}<br><small style="color:#86868b">${stu.classNo}</small>` : stu.name)
+        : '空';
       html += `<div class="seat-cell ${stu?'':'empty'}" draggable="${!!stu}"
         ondragstart="dragStart(event,'${sid||''}','${key}')"
-        ondragover="event.preventDefault()" ondrop="dropSeat(event,'${key}')">${stu ? stu.name : '空'}</div>`;
+        ondragover="event.preventDefault()" ondrop="dropSeat(event,'${key}')"
+        style="line-height:1.25">${label}</div>`;
     }
     html += `</div>`;
   }
+
+  if (!podiumTop) html += podiumHtml;
   return html;
 }
 function dragStart(e, sid, key) {
@@ -1410,10 +1439,13 @@ function changeSeatMode(mode) {
   renderSeats();
 }
 function applySeatConfig() {
-  const cfg = getCurrentClass().seats.config;
+  const cfg = getCurrentClass().seats.config || {};
   cfg.groups = parseInt(document.getElementById('cfgGroups').value) || 4;
   cfg.colsPerGroup = parseInt(document.getElementById('cfgCols').value) || 2;
   cfg.rows = parseInt(document.getElementById('cfgRows').value) || 5;
+  cfg.podiumTop = document.getElementById('cfgPodium').value === 'top';
+  cfg.showNo = document.getElementById('cfgShowNo').checked;
+  getCurrentClass().seats.config = cfg;
   saveData();
   renderSeats();
   toast('布局已更新');
@@ -1447,16 +1479,21 @@ function autoArrangeSeats() {
   renderSeats();
   toast('已按德育分初步排座');
 }
-/** 正式横向座位表导出：Word / Excel / 打印 */
+
+/** 正式横向座位表导出：Word（均衡铺满） / Excel */
 function exportSeatTable(format) {
   format = format || 'word';
   const cls = getCurrentClass();
   const seat = cls.seats;
   const current = seat.current || {};
-  const cfg = seat.config || { groups: 4, colsPerGroup: 2, rows: 5 };
+  const cfg = seat.config || { groups: 4, colsPerGroup: 2, rows: 5, podiumTop: true, showNo: false };
   const dateStr = new Date().toLocaleDateString('zh-CN');
+  const showNo = !!cfg.showNo;
+  const podiumTop = cfg.podiumTop !== false;
+  const male = cls.students.filter(s => s.gender === '男').length;
+  const female = cls.students.length - male;
 
-  // 构建座位矩阵数据
+  // 矩阵：每行 = 各组座位（含学生对象）
   const matrix = [];
   for (let r = 0; r < cfg.rows; r++) {
     const line = [];
@@ -1465,12 +1502,11 @@ function exportSeatTable(format) {
         const key = `g${g}-r${r}-c${c}`;
         const sid = current[key];
         const stu = sid ? cls.students.find(s => s.id === sid) : null;
-        line.push(stu ? stu.name : '');
+        line.push(stu);
       }
     }
     matrix.push(line);
   }
-  const totalCols = cfg.groups * cfg.colsPerGroup;
 
   if (format === 'excel') {
     if (!window.XLSX_LOADED) {
@@ -1481,11 +1517,28 @@ function exportSeatTable(format) {
       [`${cls.name} 座位表`],
       [`班主任：${cls.teacherName || ''}　教室：${cls.classroom || ''}　${dateStr}`],
       [],
-      ['【讲台】']
+      podiumTop ? ['【讲台】'] : []
     ];
-    matrix.forEach(line => rows.push(line));
+    // 组标题
+    const gh = [];
+    for (let g = 0; g < cfg.groups; g++) {
+      for (let c = 0; c < cfg.colsPerGroup; c++) gh.push(c === 0 ? `第${g+1}组` : '');
+      if (g < cfg.groups - 1) gh.push('');
+    }
+    rows.push(gh);
+    matrix.forEach(line => {
+      const row = [];
+      for (let g = 0; g < cfg.groups; g++) {
+        for (let c = 0; c < cfg.colsPerGroup; c++) {
+          const stu = line[g * cfg.colsPerGroup + c];
+          row.push(stu ? (showNo && stu.classNo ? `${stu.name}(${stu.classNo})` : stu.name) : '');
+        }
+        if (g < cfg.groups - 1) row.push('｜');
+      }
+      rows.push(row);
+    });
+    if (!podiumTop) rows.push(['【讲台】']);
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = Array(totalCols).fill({ wch: 10 });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '座位表');
     XLSX.writeFile(wb, `${cls.name}_座位表.xlsx`);
@@ -1493,40 +1546,52 @@ function exportSeatTable(format) {
     return;
   }
 
-  // ===== Word 版（HTML + Word XML，离线可用，兼容中文） =====
-  // 生成带过道分隔的表格 HTML
-  let tableRows = '';
-  // 大组标题行
-  let groupHeader = '<tr>';
-  for (let g = 0; g < cfg.groups; g++) {
-    groupHeader += `<td colspan="${cfg.colsPerGroup}" style="border:1px solid #333;text-align:center;font-weight:bold;background:#f0f0f0;padding:6px;">第${g + 1}组</td>`;
-    if (g < cfg.groups - 1) groupHeader += '<td style="border:none;width:18px;"></td>';
-  }
-  groupHeader += '</tr>';
-  tableRows += groupHeader;
+  // ===== Word：整表居中 + 组间过道 + 均匀铺满页面 =====
+  const aisleW = 22; // 过道列宽
+  const cellW = 72;
 
-  for (let r = 0; r < cfg.rows; r++) {
+  function cellHtml(stu) {
+    if (!stu) {
+      return `<td style="border:1px solid #999;text-align:center;vertical-align:middle;width:${cellW}px;height:38px;font-size:11pt;color:#bbb;">　</td>`;
+    }
+    const no = showNo && stu.classNo ? `<div style="font-size:9pt;color:#666;margin-top:1px;">${stu.classNo}</div>` : '';
+    return `<td style="border:1px solid #333;text-align:center;vertical-align:middle;width:${cellW}px;height:38px;font-size:12pt;padding:4px 2px;">
+      <div style="font-weight:500;">${stu.name}</div>${no}
+    </td>`;
+  }
+
+  let tableRows = '';
+  // 组标题行
+  let gh = '<tr>';
+  for (let g = 0; g < cfg.groups; g++) {
+    gh += `<td colspan="${cfg.colsPerGroup}" style="border:1px solid #333;text-align:center;font-weight:bold;background:#e8e8e8;padding:5px 4px;font-size:10.5pt;">第${g + 1}组</td>`;
+    if (g < cfg.groups - 1) gh += `<td style="border:none;width:${aisleW}px;"></td>`;
+  }
+  gh += '</tr>';
+  tableRows += gh;
+
+  matrix.forEach(line => {
     let tr = '<tr>';
     for (let g = 0; g < cfg.groups; g++) {
       for (let c = 0; c < cfg.colsPerGroup; c++) {
-        const name = matrix[r][g * cfg.colsPerGroup + c] || '';
-        tr += `<td style="border:1px solid #333;text-align:center;padding:10px 8px;min-width:70px;height:36px;font-size:14px;">${name}</td>`;
+        tr += cellHtml(line[g * cfg.colsPerGroup + c]);
       }
-      if (g < cfg.groups - 1) tr += '<td style="border:none;width:18px;"></td>';
+      if (g < cfg.groups - 1) tr += `<td style="border:none;width:${aisleW}px;background:#fafafa;"></td>`;
     }
     tr += '</tr>';
     tableRows += tr;
-  }
+  });
 
-  // Word 兼容文档（.doc，用 Word 可直接打开，支持横向页面）
-  const wordHtml = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office"
-      xmlns:w="urn:schemas-microsoft-com:office:word"
-      xmlns="http://www.w3.org/TR/REC-html40">
+  const podiumBlock = `<div class="podium">讲　　台</div>`;
+  const infoLine = `班主任：${cls.teacherName || '—'}　　教室：${cls.classroom || '—'}　　${dateStr}`;
+  const footerLine = `共 ${cls.students.length} 人（男 ${male} / 女 ${female}）　·　由「班主任工作台」生成`;
+
+  const wordHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:w="urn:schemas-microsoft-com:office:word"
+ xmlns="http://www.w3.org/TR/REC-html40">
 <head>
 <meta charset="UTF-8">
 <meta name="ProgId" content="Word.Document">
-<meta name="Generator" content="Microsoft Word">
 <!--[if gte mso 9]>
 <xml>
   <w:WordDocument>
@@ -1537,64 +1602,32 @@ function exportSeatTable(format) {
 </xml>
 <![endif]-->
 <style>
-  @page {
-    size: A4 landscape;
-    margin: 1.5cm 1.5cm 1.5cm 1.5cm;
-  }
-  body {
-    font-family: "宋体", "SimSun", "Microsoft YaHei", sans-serif;
-    font-size: 12pt;
-  }
-  h1 {
-    text-align: center;
-    font-size: 18pt;
-    font-family: "黑体", "SimHei", "Microsoft YaHei", sans-serif;
-    margin: 6pt 0 4pt 0;
-  }
-  .info {
-    text-align: center;
-    font-size: 10.5pt;
-    margin-bottom: 8pt;
-  }
+  @page { size: A4 landscape; margin: 1.2cm 1.2cm 1.2cm 1.2cm; }
+  body { font-family: "宋体","SimSun","Microsoft YaHei",sans-serif; font-size: 12pt; }
+  h1 { text-align: center; font-size: 18pt; font-family: "黑体","SimHei","Microsoft YaHei",sans-serif; margin: 4pt 0 6pt 0; letter-spacing: 2px; }
+  .info { text-align: center; font-size: 10.5pt; margin-bottom: 8pt; color: #333; }
   .podium {
-    text-align: center;
-    font-size: 11pt;
-    font-weight: bold;
-    border: 1px solid #333;
-    padding: 6pt;
-    margin: 0 auto 10pt auto;
-    width: 40%;
-    background: #f5f5f5;
+    text-align: center; font-size: 11pt; font-weight: bold;
+    border: 1.5px solid #333; padding: 5pt 0; margin: 6pt auto 10pt auto;
+    width: 36%; background: #f0f0f0; letter-spacing: 8px;
   }
-  table.seat {
-    border-collapse: collapse;
-    margin: 0 auto;
-  }
-  .footer {
-    text-align: center;
-    font-size: 9pt;
-    color: #666;
-    margin-top: 12pt;
-  }
+  table.seat { border-collapse: collapse; margin: 0 auto; }
+  .footer { text-align: center; font-size: 9pt; color: #666; margin-top: 10pt; }
 </style>
 </head>
 <body>
-  <h1>${cls.name} 座位表</h1>
-  <div class="info">
-    班主任：${cls.teacherName || '—'}　　教室：${cls.classroom || '—'}　　日期：${dateStr}
-  </div>
-  <div class="podium">讲　　台</div>
+  <h1>${cls.name}　座位表</h1>
+  <div class="info">${infoLine}</div>
+  ${podiumTop ? podiumBlock : ''}
   <table class="seat" cellspacing="0" cellpadding="0">
     ${tableRows}
   </table>
-  <div class="footer">（共 ${cls.students.length} 名学生 · 由「班主任工作台」生成）</div>
+  ${!podiumTop ? podiumBlock : ''}
+  <div class="footer">${footerLine}</div>
 </body>
 </html>`;
 
-  // 下载为 .doc（Word 可直接打开）
-  const blob = new Blob(['\ufeff' + wordHtml], {
-    type: 'application/msword;charset=utf-8'
-  });
+  const blob = new Blob(['\ufeff' + wordHtml], { type: 'application/msword;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `${cls.name}_座位表.doc`;
@@ -1602,7 +1635,7 @@ function exportSeatTable(format) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  toast('Word座位表已下载（可用Word/WPS打开，建议横向打印）');
+  toast('Word座位表已下载（横向打印，组间均匀分布）');
 }
 
 /* ========== 宿舍 ========== */
