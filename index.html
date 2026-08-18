@@ -379,6 +379,68 @@ tr:hover td { background: #f9f9fb; }
   .workspace { padding: 0; }
   body { overflow: visible; }
 }
+
+/* ========== 侧栏待办日历（移植自教师办公工作台） ========== */
+.cal{padding:12px 12px 14px;border-top:1px solid #ebebed;background:rgba(245,245,247,.65);flex-shrink:0}
+.cal-h{display:flex;align-items:center;gap:6px;margin-bottom:10px;min-height:28px}
+.cal-h .m{font-size:13px;font-weight:650;color:var(--text);letter-spacing:-.01em;white-space:nowrap}
+.cal-h button{width:26px;height:26px;border:1px solid var(--border);background:#fff;border-radius:8px;font-size:14px;line-height:1;color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;flex:0 0 auto}
+.cal-h button:hover{border-color:#b3d4f7;color:var(--accent);background:var(--accent-soft)}
+.cal-h .today{margin-left:auto;width:auto;min-width:26px;height:26px;border:1px solid #b3d4f7;background:var(--accent);color:#fff;border-radius:8px;padding:0 8px;font-size:12px;font-weight:650;line-height:1;box-shadow:0 1px 3px rgba(0,113,227,.2)}
+.cal-h .today:hover{background:#0062c4;color:#fff;border-color:#0062c4}
+.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;margin-bottom:4px}
+.cal-dow span{font-size:10px;color:#86868b;font-weight:500;line-height:1.2}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-d{
+  position:relative;border-radius:9px;padding:0;text-align:center;cursor:pointer;
+  background:transparent;aspect-ratio:1/1;min-height:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:background .12s;
+}
+.cal-d:hover{background:rgba(0,0,0,.04)}
+.cal-d .dn{
+  font-size:12px;line-height:1;color:var(--text-secondary);font-weight:500;
+  width:24px;height:24px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+}
+.cal-d.done .dn{color:var(--success);font-weight:700;background:#eefbf1}
+.cal-d.has .dn{color:var(--accent);font-weight:650;background:var(--accent-soft)}
+.cal-d.od .dn{color:#c0392b;font-weight:700;background:#fdeaea}
+.cal-d.today .dn{
+  color:#fff;font-weight:700;background:var(--accent);
+  box-shadow:0 1px 4px rgba(0,113,227,.28);
+}
+.cal-d.other{background:transparent;cursor:default}
+.cal-d.other:hover{background:transparent}
+.cal-d.other .dn{color:#c7c7cc;background:transparent}
+/* 进度用底部小圆点 */
+.cal-d .bar{
+  position:absolute;left:50%;bottom:2px;transform:translateX(-50%);
+  width:auto;height:auto;background:transparent;margin:0;overflow:visible;
+  display:flex;gap:2px;justify-content:center;pointer-events:none;
+}
+.cal-d .bar i{
+  display:block;width:3.5px;height:3.5px;border-radius:50%;background:var(--success);
+}
+.cal-d .bar i.ok{background:var(--success)}
+.cal-d .bar i.rem{background:var(--danger)}
+.cal-d .plus{
+  position:absolute;top:-1px;right:-1px;width:14px;height:14px;border:0;
+  background:#fff;color:var(--accent);font-size:12px;line-height:14px;opacity:0;
+  cursor:pointer;padding:0;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.08);
+}
+.cal-d:hover .plus{opacity:.9}
+.cal-d .plus:hover{opacity:1;background:var(--accent-soft)}
+.cal-sum{margin-top:10px;padding-top:10px;border-top:1px solid #ebebed}
+.cal-sum .row{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--text-secondary)}
+.cal-sum .row b{color:var(--text);font-weight:600}
+.cal-sum .bar{height:6px;background:#e2e8e6;border-radius:4px;margin-top:6px;overflow:hidden}
+.cal-sum .bar i{display:block;height:100%;background:var(--accent)}
+.cal-sum .hint{font-size:10.5px;color:#86868b;margin-top:6px;line-height:1.45}
+.cal-flt{display:flex;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid #b3d4f7;border-radius:10px;padding:8px 12px;margin:10px 0;font-size:13.5px;color:var(--accent)}
+.cal-flt .ct{font-weight:600}
+.cal-flt .cn{color:var(--text-secondary);font-size:12.5px}
+.cal-flt .btn{margin-left:auto}
 </style>
 </head>
 <body>
@@ -412,6 +474,7 @@ tr:hover td { background: #f9f9fb; }
     <div class="nav-item" data-module="records" onclick="switchModule('records')"><span class="nav-icon">📂</span> 工作留痕</div>
     <div class="nav-item" data-module="todos" onclick="switchModule('todos')"><span class="nav-icon">✅</span> 待办事项</div>
     <div class="nav-item" data-module="custom" onclick="switchModule('custom')"><span class="nav-icon">➕</span> 自定义</div>
+    <div class="cal" id="calBox"></div>
   </div>
   <div class="workspace" id="workspace"></div>
 </div>
@@ -614,6 +677,7 @@ function switchClass(id) {
   appData.currentClassId = id;
   saveData();
   refreshClassSelect();
+  renderCalBox();
   switchModule(currentModule);
   toast('已切换班级');
 }
@@ -650,7 +714,7 @@ function doCreateClass() {
     points: [], comments: [], records: [], todos: [], customModules: []
   };
   appData.currentClassId = id;
-  saveData(); refreshClassSelect(); closeModal();
+  saveData(); refreshClassSelect(); renderCalBox(); closeModal();
   switchModule('dashboard'); toast('新班级已创建（默认无学生）');
 }
 function deleteCurrentClass() {
@@ -658,7 +722,7 @@ function deleteCurrentClass() {
   if (!confirmDel('确定删除当前班级及全部数据？')) return;
   delete appData.classes[appData.currentClassId];
   appData.currentClassId = Object.keys(appData.classes)[0];
-  saveData(); refreshClassSelect(); switchModule('dashboard'); toast('已删除');
+  saveData(); refreshClassSelect(); renderCalBox(); switchModule('dashboard'); toast('已删除');
 }
 
 function switchModule(mod) {
@@ -1711,7 +1775,7 @@ function showPointForm() {
   openModal('录入积分', `
     <div class="form-group"><label>学生</label><select id="pStu">${opts}</select></div>
     <div class="form-row">
-      <div class="form-group"><label>日期</label><input id="pDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-group"><label>日期</label><input id="pDate" type="date" value="${todayStr()}"></div>
       <div class="form-group"><label>类型</label>
         <select id="pType"><option>奖励</option><option>违纪</option><option>德育</option></select>
       </div>
@@ -1814,7 +1878,7 @@ function saveComment() {
     studentId: document.getElementById('cmStu').value,
     level: document.getElementById('cmLevel').value,
     content,
-    date: new Date().toISOString().slice(0,10)
+    date: todayStr()
   });
   saveData(); closeModal(); renderComments(); toast('已保存');
 }
@@ -1856,7 +1920,7 @@ function showRecordForm() {
         </select>
       </div>
       <div class="form-group"><label>日期</label>
-        <input id="rDate" type="date" value="${new Date().toISOString().slice(0,10)}">
+        <input id="rDate" type="date" value="${todayStr()}">
       </div>
     </div>
     <div class="form-group"><label>学生</label>
@@ -1896,12 +1960,95 @@ function delRecord(id) {
   saveData(); renderRecords();
 }
 
+/* ========== 侧栏待办日历（移植自教师办公工作台） ========== */
+function pad(n){ return n < 10 ? '0' + n : '' + n; }
+function ymd(d){ return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function todayStr(){ return ymd(new Date()); }
+
+var CAL = { y: 0, m: 0 };   // 当前查看的年月（m:1-12）
+
+function renderCalBox() {
+  const box = document.getElementById('calBox');
+  if (!box) return;
+  const cls = getCurrentClass();
+  if (!cls) return;   // 保护：数据异常（如备份恢复后班级缺失）时不崩溃
+  if (!CAL.y) { const nd = new Date(); CAL.y = nd.getFullYear(); CAL.m = nd.getMonth() + 1; }
+  const y = CAL.y, m = CAL.m, t = todayStr();
+  const todos = (cls.todos) || [];
+  const first = new Date(y, m - 1, 1);
+  const startDow = (first.getDay() + 6) % 7;       // 周一为 0
+  const days = new Date(y, m, 0).getDate();
+  function stat(dstr) {
+    const all = todos.filter(function(x){ return x.deadline === dstr; });
+    return { total: all.length, done: all.filter(function(x){ return x.done; }).length };
+  }
+  let html = '<div class="cal-h"><span class="m">' + y + '年' + m + '月</span>' +
+    '<button onclick="calPrev()" aria-label="上个月">‹</button>' +
+    '<button onclick="calNext()" aria-label="下个月">›</button>' +
+    '<button class="today" onclick="calToday()">今</button></div>';
+  html += '<div class="cal-dow"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>';
+  html += '<div class="cal-grid">';
+  const prevDays = new Date(y, m - 1, 0).getDate();
+  for (let i = 0; i < startDow; i++) {
+    html += '<div class="cal-d other"><span class="dn">' + (prevDays - startDow + 1 + i) + '</span></div>';
+  }
+  let monthDone = 0, monthTotal = 0;
+  for (let d = 1; d <= days; d++) {
+    const ds = ymd(new Date(y, m - 1, d)), s = stat(ds);
+    monthDone += s.done; monthTotal += s.total;
+    let cls = 'cal-d';
+    if (ds === t) cls += ' today';
+    if (s.total) {
+      if (s.done === s.total) cls += ' done';       // 全部完成 -> 绿
+      else if (ds < t) cls += ' od';                // 逾期未完成 -> 红
+      else cls += ' has';                           // 有未完成、未到期 -> 青
+    }
+    let bar = '';
+    if (s.total) {
+      if (s.done === s.total) {
+        bar = '<div class="bar"><i class="ok"></i></div>';
+      } else if (s.done > 0) {
+        bar = '<div class="bar"><i class="ok"></i><i class="rem"></i></div>';
+      } else {
+        bar = '<div class="bar"><i class="rem"></i></div>';
+      }
+    }
+    html += '<div class="' + cls + '" onclick="gotoTodoDate(\'' + ds + '\')">' +
+      '<button class="plus" onclick="event.stopPropagation();addTodoOn(\'' + ds + '\')" title="添加这天任务">+</button>' +
+      '<span class="dn">' + d + '</span>' + bar + '</div>';
+  }
+  const rem = (7 - ((startDow + days) % 7)) % 7;
+  for (let j = 1; j <= rem; j++) {
+    html += '<div class="cal-d other"><span class="dn">' + j + '</span></div>';
+  }
+  html += '</div>';
+  const pctM = monthTotal ? Math.round(monthDone / monthTotal * 100) : 0;
+  html += '<div class="cal-sum"><div class="row"><span>本月完成</span><b>' + monthDone + ' / ' + monthTotal + ' · ' + pctM + '%</b></div>' +
+    '<div class="bar"><i style="width:' + pctM + '%"></i></div>' +
+    '<div class="hint">点日期看当天待办 · 格子右上角 + 直接加任务</div></div>';
+  box.innerHTML = html;
+}
+function calPrev(){ if (CAL.m === 1) { CAL.m = 12; CAL.y--; } else CAL.m--; renderCalBox(); }
+function calNext(){ if (CAL.m === 12) { CAL.m = 1; CAL.y++; } else CAL.m++; renderCalBox(); }
+function calToday(){ const d = new Date(); CAL.y = d.getFullYear(); CAL.m = d.getMonth() + 1; renderCalBox(); }
+function gotoTodoDate(d){ TODO_DATE = d; switchModule('todos'); }
+function clearTodoDate(){ TODO_DATE = ''; switchModule('todos'); }
+function addTodoOn(d){ showTodoForm(); const el = document.getElementById('todoDeadline'); if (el) el.value = d; }
+
 /* ========== 待办 ========== */
+let TODO_DATE = '';   // 日历点击的日期筛选；''=不过滤
+
 function renderTodos() {
   const cls = getCurrentClass();
-  const todos = cls.todos || [];
-  const today = new Date().toISOString().slice(0,10);
+  let todos = cls.todos || [];
+  const today = todayStr();   // 本地日期，与侧栏日历一致（避免 toISOString 的 UTC 时区偏差）
+  let banner = '';
+  if (TODO_DATE) {
+    todos = todos.filter(t => t.deadline === TODO_DATE);
+    banner = `<div class="cal-flt"><span>📅</span><span class="ct">${TODO_DATE} 的待办</span><span class="cn">${todos.length} 项</span><button class="btn btn-sm" onclick="clearTodoDate()">清除筛选</button></div>`;
+  }
   document.getElementById('workspace').innerHTML = `
+    ${banner}
     <div class="card">
       <div class="card-title">待办事项 <button class="btn btn-sm" onclick="showTodoForm()">新增</button></div>
       ${todos.length === 0 ? '<div class="empty">暂无待办</div>' : `
@@ -1922,7 +2069,7 @@ function showTodoForm() {
   openModal('新增待办', `
     <div class="form-group"><label>事项名称</label><input id="todoTitle"></div>
     <div class="form-row">
-      <div class="form-group"><label>截止时间</label><input id="todoDeadline" type="date"></div>
+      <div class="form-group"><label>截止时间</label><input id="todoDeadline" type="date" value="${todayStr()}"></div>
       <div class="form-group"><label>紧急程度</label>
         <select id="todoPriority"><option>紧急</option><option selected>一般</option><option>低</option></select>
       </div>
@@ -1941,16 +2088,16 @@ function saveTodo() {
     done: false,
     remind: true
   });
-  saveData(); closeModal(); renderTodos(); toast('已添加');
+  saveData(); closeModal(); renderTodos(); renderCalBox(); toast('已添加');
 }
 function toggleTodo(id) {
   const t = getCurrentClass().todos.find(x => x.id === id);
-  if (t) { t.done = !t.done; saveData(); renderTodos(); }
+  if (t) { t.done = !t.done; saveData(); renderTodos(); renderCalBox(); }
 }
 function deleteTodo(id) {
   if (!confirmDel()) return;
   getCurrentClass().todos = getCurrentClass().todos.filter(t => t.id !== id);
-  saveData(); renderTodos();
+  saveData(); renderTodos(); renderCalBox();
 }
 
 /* ========== 自定义 ========== */
@@ -2290,7 +2437,7 @@ function backupData() {
   const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `班主任工作台备份_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `班主任工作台备份_${todayStr()}.json`;
   a.click();
   toast('备份已下载');
 }
@@ -2306,6 +2453,7 @@ function restoreData(e) {
       appData = data;
       saveData();
       refreshClassSelect();
+      renderCalBox();
       switchModule('dashboard');
       toast('恢复成功');
     } catch (err) {
@@ -2324,6 +2472,7 @@ function doGlobalSearch(kw) {
 /* ===== 初始化 ===== */
 loadData();
 refreshClassSelect();
+renderCalBox();
 switchModule('dashboard');
 document.getElementById('modalMask').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeModal();
